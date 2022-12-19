@@ -1,5 +1,4 @@
 import os
-import time
 from copy import deepcopy
 
 from transformers import Trainer, TrainingArguments, AdamW, get_constant_schedule
@@ -8,7 +7,7 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.integrations import TensorBoardCallback
 
 from hf_nlu.trainer.nlu_modelling import DataCollatorForNLU, nlu_evaluate
-from hf_nlu.trainer.callbacks import GradientNormCallback, EL2NCallback, PerSampleLossCallback, LossCallback
+from hf_nlu.trainer.callbacks import GradientNormCallback, EL2NCallback, PerSampleLossCallback, LossCallback, TimeCallback
 from hf_nlu.trainer.prune_utils import PruneConfig, PruneScoreManager
 from hf_nlu.trainer.dataset_utils import format_dataset
 from hf_nlu.trainer.utils import save_evaluation
@@ -92,6 +91,7 @@ class TrainerManager:
             self.trainer.add_callback(EL2NCallback(dataset="test", reduce_method="norm"))
         elif self.prune_manager.config.mode == "loss":
             self.trainer.add_callback(PerSampleLossCallback(dataset="test"))
+        self.trainer.add_callback(TimeCallback)
 
     def _update_traindata(self):
         """Fetch scores and filter temporary trainset to overwrite in trainer."""
@@ -135,7 +135,6 @@ class TrainerManager:
         prune_epoch = self.prune_manager.config.epoch
 
         print("TRAINING...")
-        start_time = time.time()
         self.trainer.train()
 
         if epochs > prune_epoch:
@@ -154,12 +153,15 @@ class TrainerManager:
             if epochs > self.trainer.args.num_train_epochs:
                 self._prune_run(epochs-self.trainer.args.num_train_epochs)
 
-        total_sec = time.time() - start_time
+        # Fetch total time from TimeCallback
+        total_sec = self.trainer.callback_handler.callbacks[-1].total_time
 
         print("EVALUATING...")
         self.trainer.eval_dataset = self.test_dataset # replace full trainset by test set, trainer will batch test data
         final_eval = nlu_evaluate(self.model, self.trainer.get_eval_dataloader(), self.trainer.args.device)
         final_eval.update({"runtime": total_sec})
-        save_evaluation(final_eval, self.args.get("output_dir"))
+        output_dir = self.args.get("output_dir")
+        save_evaluation(final_eval, output_dir)
+        self.prune_manager.config.save_to_json(output_dir)
 
         print("Done!")

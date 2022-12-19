@@ -1,3 +1,5 @@
+import time
+
 import torch
 from torch import nn
 from tqdm import tqdm
@@ -33,7 +35,7 @@ class GradientNormCallback(TrainerCallback):
         super().__init__(**kwargs)
         self.dataset = dataset
 
-    def on_evaluate(self, args, state, control, model=None, train_dataloader=None, eval_dataloader=None, **kwargs):
+    def on_train_end(self, args, state, control, model=None, train_dataloader=None, eval_dataloader=None, **kwargs):
         print("GRADIENT EVAL")
         model.to(args.device)
         dataloader = train_dataloader if self.dataset == "train" else eval_dataloader
@@ -90,7 +92,7 @@ class EL2NCallback(TrainerCallback):
         self.reduce_method = reduce_method
         self.dataset = dataset
 
-    def on_evaluate(self, args, state, control, model=None, train_dataloader=None, eval_dataloader=None, **kwargs):
+    def on_train_end(self, args, state, control, model=None, train_dataloader=None, eval_dataloader=None, **kwargs):
         print("EL2N EVAL")
         model.to(args.device)
         dataloader = train_dataloader if self.dataset == "train" else eval_dataloader
@@ -134,7 +136,7 @@ class PerSampleLossCallback(TrainerCallback):
         super().__init__(**kwargs)
         self.dataset = dataset
 
-    def on_evaluate(self, args, state, control, model=None, train_dataloader=None, eval_dataloader=None, **kwargs):
+    def on_train_end(self, args, state, control, model=None, train_dataloader=None, eval_dataloader=None, **kwargs):
         print("PER-SAMPLE LOSS EVAL")
         model.to(args.device)
         dataloader = train_dataloader if self.dataset == "train" else eval_dataloader
@@ -166,3 +168,19 @@ class LossCallback(TrainerCallback):
 
         with open(f"{args.output_dir}/loss.tsv", "a") as fp:
             fp.write("%f\t%f\n" % (state.epoch, sum(all_loss)/count))
+
+
+class TimeCallback(TrainerCallback):
+    def __init__(self):
+        self.start_time = 0
+        self.total_time = 0
+    def on_step_begin(self, args, state, control, **kwargs):
+        self.start_time = time.time()
+    def on_step_end(self, args, state, control, **kwargs):
+        step_time = time.time() - self.start_time
+        with open(f"{args.output_dir}/time.txt", "a") as fp:
+            fp.write("%f\t%f\n" % (state.global_state, step_time))
+    def on_train_end(self, args, state, control, **kwargs):
+        with open(f"{args.output_dir}/time.txt", "r") as fp:
+            times = [tuple(f.strip().split("\t")) for f in fp.readlines()]
+        self.total_time = sum([float(t) for _, t in times])

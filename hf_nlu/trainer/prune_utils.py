@@ -1,4 +1,5 @@
 import os
+import json
 import re
 
 import numpy as np
@@ -23,6 +24,10 @@ class PruneConfig:
         self.ema_alpha = ema_alpha
         self.ema_var_coef = ema_var_coef
         self.ema_use_std = ema_use_std
+
+    def save_to_json(self, folder: str):
+        with open(os.path.join(folder, "prune_config.json"), "w") as fp:
+            json.dump(self.__dict__, fp)
 
 
 def list_score_files(output_dir: str, prefix: str) -> iter:

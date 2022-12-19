@@ -9,11 +9,11 @@ from datasets import load_dataset
 from datasets.utils.logging import disable_progress_bar
 disable_progress_bar()
 
-from trainer.trainer_manager import TrainerManager
-from trainer.prune_utils import PruneConfig
-from trainer.nlu_modelling import RobertaForNLU, RobertaNLUConfig, MASK_VALUE
-from trainer.dataset_utils import format_dataset
-from trainer.utils import rev_dict
+from hf_nlu.trainer.trainer_manager import TrainerManager
+from hf_nlu.trainer.prune_utils import PruneConfig
+from hf_nlu.trainer.nlu_modelling import RobertaForNLU, RobertaNLUConfig, MASK_VALUE
+from hf_nlu.trainer.dataset_utils import format_dataset
+from hf_nlu.trainer.utils import rev_dict
 
 
 def parse_args(raw_args=None):
