@@ -7,7 +7,7 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.integrations import TensorBoardCallback
 
 from hf_nlu.trainer.nlu_modelling import DataCollatorForNLU, nlu_evaluate
-from hf_nlu.trainer.callbacks import GradientNormCallback, EL2NCallback, PerSampleLossCallback, LossCallback, TimeCallback
+from hf_nlu.trainer.callbacks import ScoreCallback, LossCallback, TimeCallback
 from hf_nlu.trainer.prune_utils import PruneConfig, PruneScoreManager
 from hf_nlu.trainer.dataset_utils import format_dataset
 from hf_nlu.trainer.utils import save_evaluation
@@ -56,7 +56,7 @@ class TrainerManager:
         eval_steps = self._compute_eval_steps()
         return TrainingArguments(
             warmup_ratio=0.0,
-            evaluation_strategy="steps",
+            evaluation_strategy="no",
             eval_steps=eval_steps,
             save_strategy="steps",
             save_steps=eval_steps,
@@ -70,27 +70,31 @@ class TrainerManager:
         train_args = self._generate_training_args()
         opt_tup = self._init_opt()
 
-        # keep trainset in eval_dataset for full processing of scores,
-        # while train_dataset is sliced based on scores.
+        collate_fn = DataCollatorForNLU(tokenizer=self.tokenizer, padding='longest', max_length=50)
+
         self.trainer = Trainer(
             model=self.model,
             tokenizer=self.tokenizer,
             args=train_args,
             train_dataset=deepcopy(self.train_dataset),
-            eval_dataset=deepcopy(self.train_dataset),
+            eval_dataset=deepcopy(self.test_dataset),
             optimizers=opt_tup,
-            data_collator=DataCollatorForNLU(tokenizer=self.tokenizer, padding='longest', max_length=50)
+            data_collator=collate_fn
         )
 
         self.trainer.callback_handler.remove_callback(TensorBoardCallback)
         if self.track_loss:
             self.trainer.add_callback(LossCallback)
-        if self.prune_manager.config.mode == "grand":
-            self.trainer.add_callback(GradientNormCallback(dataset="test"))
-        elif self.prune_manager.config.mode == "el2n":
-            self.trainer.add_callback(EL2NCallback(dataset="test", reduce_method="norm"))
-        elif self.prune_manager.config.mode == "loss":
-            self.trainer.add_callback(PerSampleLossCallback(dataset="test"))
+
+        prune_mode = self.prune_manager.config.mode
+        if prune_mode in ["grand", "el2n", "loss"]:
+            score_callback = ScoreCallback(
+                method=prune_mode,
+                dataset=deepcopy(self.train_dataset),
+                collate_fn=collate_fn
+            )
+            self.trainer.add_callback(score_callback)
+
         self.trainer.add_callback(TimeCallback)
 
     def _update_traindata(self):
@@ -157,7 +161,6 @@ class TrainerManager:
         total_sec = self.trainer.callback_handler.callbacks[-1].total_time
 
         print("EVALUATING...")
-        self.trainer.eval_dataset = self.test_dataset # replace full trainset by test set, trainer will batch test data
         final_eval = nlu_evaluate(self.model, self.trainer.get_eval_dataloader(), self.trainer.args.device)
         final_eval.update({"runtime": total_sec})
         output_dir = self.args.get("output_dir")

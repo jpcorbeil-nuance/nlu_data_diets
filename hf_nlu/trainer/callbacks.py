@@ -1,3 +1,5 @@
+from copy import deepcopy
+from functools import partial
 import time
 
 import torch
@@ -28,28 +30,6 @@ def compute_sample_grads(inputs, model, device):
         del batch_input
         sample_grads.append(sample_grad)
     return sample_grads
-
-
-class GradientNormCallback(TrainerCallback):
-    def __init__(self, dataset: str = "train", **kwargs):
-        super().__init__(**kwargs)
-        self.dataset = dataset
-
-    def on_train_end(self, args, state, control, model=None, train_dataloader=None, eval_dataloader=None, **kwargs):
-        print("GRADIENT EVAL")
-        model.to(args.device)
-        dataloader = train_dataloader if self.dataset == "train" else eval_dataloader
-        all_grads = []
-        for batch in tqdm(dataloader):
-            batch_grads = compute_sample_grads(batch, model, args.device)
-            for i, n in zip(batch["id"], batch_grads):
-                N = tuple(map(lambda x: float(x), n))
-                elem = (int(i), *N)
-                all_grads.append(elem)
-
-        with open(f"{args.output_dir}/grand_{state.epoch}.tsv", "w") as fp:
-            fp.write("Id\tScore\n")
-            fp.write("\n".join("\t".join(map(str, g)) for g in all_grads))
 
 
 def compute_el2n(inputs, model, device, reduce_method: str):
@@ -85,29 +65,6 @@ def compute_el2n(inputs, model, device, reduce_method: str):
     return total_scores.detach().cpu().numpy()
 
 
-class EL2NCallback(TrainerCallback):
-    def __init__(self, dataset: str = "train", reduce_method: str = "sum", **kwargs):
-        super().__init__(**kwargs)
-        assert reduce_method in ["sum", "mean", "norm"], "'reduce_method' must 'sum', 'mean' or 'norm'."
-        self.reduce_method = reduce_method
-        self.dataset = dataset
-
-    def on_train_end(self, args, state, control, model=None, train_dataloader=None, eval_dataloader=None, **kwargs):
-        print("EL2N EVAL")
-        model.to(args.device)
-        dataloader = train_dataloader if self.dataset == "train" else eval_dataloader
-        all_grads = []
-        for batch in tqdm(dataloader):
-            batch_grads = compute_el2n(batch, model, args.device, self.reduce_method)
-            for i, n in zip(batch["id"], batch_grads):
-                elem = (int(i), n)
-                all_grads.append(elem)
-
-        with open(f"{args.output_dir}/el2n_{state.epoch}.tsv", "w") as fp:
-            fp.write("Id\tScore\n") # Intent_Norm\tSlot_Norm\t
-            fp.write("\n".join("\t".join(map(str, g)) for g in all_grads))
-
-
 def compute_persample_loss(inputs, model, device):
     batch_input = {k: inputs[k].to(device) for k in inputs}
     with torch.no_grad():
@@ -131,28 +88,56 @@ def compute_persample_loss(inputs, model, device):
     return persample_loss
 
 
-class PerSampleLossCallback(TrainerCallback):
-    def __init__(self, dataset: str = "train", **kwargs):
+class ScoreCallback(TrainerCallback):
+    def __init__(self, method: str, dataset, collate_fn, reduce_method: str = "norm", **kwargs):
         super().__init__(**kwargs)
+        assert reduce_method in ["sum", "mean", "norm"], "'reduce_method' must 'sum', 'mean' or 'norm'."
+        self.reduce_method = reduce_method
+        self.method = method
         self.dataset = dataset
+        self.collate_fn = collate_fn
+        self._set_compute_fn()
 
-    def on_train_end(self, args, state, control, model=None, train_dataloader=None, eval_dataloader=None, **kwargs):
-        print("PER-SAMPLE LOSS EVAL")
+    def _set_compute_fn(self):
+        if self.method == "loss":
+            self.compute_fn = compute_persample_loss
+        elif self.method == "el2n":
+            self.compute_fn = partial(compute_el2n, reduce_method=self.reduce_method)
+        elif self.method == "grand":
+            self.compute_fn = compute_sample_grads
+
+    def on_train_end(self, args, state, control, model=None, **kwargs):
+        print(f"SCORE EVAL: {self.method}")
         model.to(args.device)
-        dataloader = train_dataloader if self.dataset == "train" else eval_dataloader
+
+        dataloader = torch.utils.data.DataLoader(
+            self.dataset,
+            batch_size=args.per_device_eval_batch_size,
+            collate_fn=self.collate_fn
+        )
+
+        start_time = time.time()
+
         all_grads = []
         for batch in tqdm(dataloader):
-            batch_grads = compute_persample_loss(batch, model, args.device)
+            batch_grads = self.compute_fn(inputs=batch, model=model, device=args.device)
             for i, n in zip(batch["id"], batch_grads):
                 elem = (int(i), float(n))
                 all_grads.append(elem)
 
-        with open(f"{args.output_dir}/loss_{state.epoch}.tsv", "w") as fp:
+        score_time = time.time() - start_time
+        with open(f"{args.output_dir}/time.txt", "a") as fp:
+            fp.write("%f\t%f\tscore\n" % (state.global_step, score_time))
+
+        with open(f"{args.output_dir}/{self.method}_{state.epoch}.tsv", "w") as fp:
             fp.write("Id\tScore\n") # Intent_Norm\tSlot_Norm\t
             fp.write("\n".join("\t".join(map(str, g)) for g in all_grads))
 
 
 class LossCallback(TrainerCallback):
+    """
+    General total loss compute per eval.
+    """
     def on_evaluate(self, args, state, control, model=None, train_dataloader=None, **kwargs):
         print("COMPUTING TRAIN LOSS")
         model.to(args.device)
@@ -171,6 +156,10 @@ class LossCallback(TrainerCallback):
 
 
 class TimeCallback(TrainerCallback):
+    """
+    Compute time per step (along process logging in time.txt)
+    and summing at the end of the training.
+    """
     def __init__(self):
         self.start_time = 0
         self.total_time = 0
@@ -179,8 +168,8 @@ class TimeCallback(TrainerCallback):
     def on_step_end(self, args, state, control, **kwargs):
         step_time = time.time() - self.start_time
         with open(f"{args.output_dir}/time.txt", "a") as fp:
-            fp.write("%f\t%f\n" % (state.global_state, step_time))
+            fp.write("%f\t%f\tstep\n" % (state.global_step, step_time))
     def on_train_end(self, args, state, control, **kwargs):
         with open(f"{args.output_dir}/time.txt", "r") as fp:
             times = [tuple(f.strip().split("\t")) for f in fp.readlines()]
-        self.total_time = sum([float(t) for _, t in times])
+        self.total_time = sum([float(t) for _, t, _ in times])
