@@ -18,3 +18,5 @@ Example of execution from main script *nlu-training.py*:
         --prune_epoch 4 \
         --prune_size 0.5 \
         --prune_mode el2n
+
+Check the following script for thorough usage on UNIX: *hf_nlu/scripts/launch_jam.sh*.
