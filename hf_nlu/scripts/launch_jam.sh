@@ -10,29 +10,27 @@ export RUNPATH=/nlu/users/jeanphilippe_corbeil/data_diet
 # Absolute path to locate HF data diet git
 export HF_NLU_DATA_DIET=$RUNPATH/hf_nlu_data_diet
 
-cd $RUNPATH
-
-for prune_mode in "loss" "el2n" "random"
+for prune_mode in "el2n"
 do
-for frequency in $(seq 1 5)
+for frequency in 4
 do
-for prune_epoch in $(seq 1 6)
+for prune_epoch in 1
 do
-for prune_size in $(seq 0.1 0.1 0.9)
+for prune_size in 0.5
 do
 
-run_folder=all_dynamic_runs/runs_$prune_mode\_$prune_epoch\_$prune_size\_$frequency
-mkdir -p $RUNPATH/$run_folder
+run_folder=$RUNPATH/test/runs_$prune_mode\_$prune_epoch\_$prune_size\_$frequency
+mkdir -p $run_folder
 
-for dataset in "snips" "atis" "slurp" "mtop"
+for dataset in "atis"
 do
-mkdir -p $RUNPATH/$run_folder/$dataset
-mkdir -p $RUNPATH/$run_folder/$dataset/logs
+mkdir -p $run_folder/$dataset
+mkdir -p $run_folder/$dataset/logs
 /tools/res/tools/devtools/cli/bin/jam run \
     --container research_tools/ngc-tf-2.3.1-py3:latest \
     -n "run_${dataset}_${prune_mode}_${prune_epoch}_${prune_size}_${frequency}" \
     -c "./av_run.sh" \
-    --gpu_type 'v100' \
+    --gpu_type 'v100|p6000' \
     --gpu_number 1 \
     -v "HF_NLU_DATA_DIET=$HF_NLU_DATA_DIET" \
     -v "RUNPATH=$RUNPATH" \
@@ -44,11 +42,11 @@ mkdir -p $RUNPATH/$run_folder/$dataset/logs
     -v "FREQUENCY=$frequency" \
     -v "PRUNE_EPOCH=$prune_epoch" \
     -v "PRUNE_SIZE=$prune_size" \
-    -v "PRUNE_OFFSET=0.00" \
+    -v "PRUNE_OFFSET=0.0" \
     -v "PRUNE_MODE=$prune_mode" \
-    -o $RUNPATH/$run_folder/$dataset/logs/bft.log \
-    -e $RUNPATH/$run_folder/$dataset/logs/bft.log \
-    -t 1-5:1
+    -o $run_folder/$dataset/logs/bft.log \
+    -e $run_folder/$dataset/logs/bft.log
+    # -t 1-5:1
 done
 
 done
