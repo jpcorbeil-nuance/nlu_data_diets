@@ -90,7 +90,7 @@ def fetch_ema(output_dir: str, prune_mode: str, alpha: float = 0.8, c: float = 1
     pdf = pd.pivot_table(df, values="Score", index="Epoch", columns="Id")
     mean = pdf.ewm(alpha=alpha, adjust=False).mean()
     s = mean
-    if c > 0.0:
+    if len(epochs) > 1 and c > 0.0:
         emw = pdf.ewm(alpha=alpha, adjust=False)
         if use_std:
             deviation = emw.std()
