@@ -162,7 +162,7 @@ class TrainerManager:
 
         print("EVALUATING...")
         final_eval = nlu_evaluate(self.model, self.trainer.get_eval_dataloader(), self.trainer.args.device)
-        final_eval.update({"runtime": total_sec})
+        final_eval.update({"runtime": total_sec, "epochs": epochs})
         output_dir = self.args.get("output_dir")
         save_evaluation(final_eval, output_dir)
         self.prune_manager.config.save_to_json(output_dir)
