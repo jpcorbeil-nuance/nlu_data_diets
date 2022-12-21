@@ -1,13 +1,16 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import os
 import argparse
 
 import torch
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, RobertaModel, RobertaConfig
 from datasets import load_dataset
 from datasets.utils.logging import disable_progress_bar
 disable_progress_bar()
+
+from nuance_tensorflow_utils.executors import RunAsCUDA
 
 from hf_nlu.trainer.trainer_manager import TrainerManager
 from hf_nlu.trainer.prune_utils import PruneConfig
@@ -19,11 +22,14 @@ from hf_nlu.trainer.utils import rev_dict
 def parse_args(raw_args=None):
     # FLAGS
     parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset_path", type=str, default="datasets/atis/nlu_data", help="Path in which to find the dataset folders.")
+    parser.add_argument("--model_name", type=str, default="roberta-base", help="Name or path of the model.")
+    parser.add_argument("--output_path", type=str, required=True, help="Output path directory.")
     parser.add_argument("--random_seed", type=int, default=1234, help="Seed integer for pseudo-random numbers.")
     parser.add_argument("--eval_per_epoch", type=int, default=1, help="Number of evaluations per epoch.")
     parser.add_argument("--frequency", type=int, default=1, help="Swap data pruninng every N epochs.")
-    parser.add_argument("--epochs", type=int, default=20, help="Number of epochs in total.")
-    parser.add_argument("--prune_epoch", type=float, default=20, help="Number of epochs before pruning.")
+    parser.add_argument("--epochs", type=int, default=40, help="Number of epochs in total.")
+    parser.add_argument("--prune_epoch", type=float, default=40, help="Number of epochs before pruning.")
     parser.add_argument("--prune_mode", type=str, default="el2n", help="Mode of pruning.")
     parser.add_argument("--prune_size", type=float, default=0.5, help="Proportion of samples to prune.")
     parser.add_argument("--prune_offset", type=float, default=0.0, help="Offset to proportion of samples to prune.")
@@ -34,9 +40,6 @@ def parse_args(raw_args=None):
     parser.add_argument("--prune_ema_use_std", action='store_false', help="Use std instead of variance (default, std).")
     parser.add_argument("--bs", type=int, default=32, help="Batch size to use in training.")
     parser.add_argument("--lr", type=float, default=2e-5, help="Amount of samples to provide in one batch.")
-    parser.add_argument("--dataset_path", type=str, default="datasets/atis/nlu_data", help="Path in which to find the dataset folders.")
-    parser.add_argument("--model_name", type=str, default="roberta-base", help="Name or path of the model.")
-    parser.add_argument("--output_path", type=str, required=True, help="Output path directory.")
     return parser.parse_args(raw_args)
 
 
@@ -94,9 +97,13 @@ def generate_dataset(dataset_path: str, tokenizer, random_seed: int = 1234):
 def main(raw_args=None):
     args_in = parse_args(raw_args=raw_args)
 
+    # Lock GPU if there is.
+    temp_model = RobertaModel(config=RobertaConfig())
+    temp_model.to("cuda" if torch.cuda.is_available() else "cpu")
+
     # Assign args to variables.
-    dataset_path = args_in.dataset_path
     model_name = args_in.model_name
+    dataset_path = args_in.dataset_path
     random_seed = args_in.random_seed
     output_dir = args_in.output_path
     eval_per_epoch = args_in.eval_per_epoch
@@ -137,7 +144,7 @@ def main(raw_args=None):
         ema_use_std=ema_use_std
     )
 
-    print("LOAD TOKENIZER AND DATSET")
+    print("LOAD TOKENIZER AND DATASET")
     tokenizer = AutoTokenizer.from_pretrained(model_name, add_prefix_space=True)
     train, test, id2intent, id2slots = generate_dataset(dataset_path, tokenizer, random_seed)
 
@@ -180,7 +187,17 @@ def main(raw_args=None):
         prune_config=prune_config
     )
 
+    # Unlock GPU if it is
+    temp_model.to("cpu")
+    del temp_model
+
     train_manager.run()
 
-if __name__ == "__main__":
+
+@RunAsCUDA(n_devices=1)
+def executor():
     main()
+
+
+if __name__ == "__main__":
+    executor()
