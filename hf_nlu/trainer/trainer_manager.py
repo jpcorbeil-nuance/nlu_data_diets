@@ -38,7 +38,7 @@ class TrainerManager:
 
     def _init_opt(self):
         """Initialize optimizer and schedule."""
-        adam = AdamW(self.model.parameters(), lr=self.args.get("learning_rate", 5e-5))
+        adam = AdamW(self.model.parameters(), lr=self.args["learning_rate"])
         schedule = get_constant_schedule(adam)
         return adam, schedule
 
@@ -162,7 +162,7 @@ class TrainerManager:
 
         print("EVALUATING...")
         final_eval = nlu_evaluate(self.model, self.trainer.get_eval_dataloader(), self.trainer.args.device)
-        final_eval.update({"runtime": total_sec, "epochs": epochs})
+        final_eval.update({"runtime": total_sec, "epochs": epochs, "learning_rate": self.args["learning_rate"], "fp16": self.args["fp16"]})
         output_dir = self.args.get("output_dir")
         save_evaluation(final_eval, output_dir)
         self.prune_manager.config.save_to_json(output_dir)
