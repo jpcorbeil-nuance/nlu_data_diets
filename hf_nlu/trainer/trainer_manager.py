@@ -7,7 +7,7 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.integrations import TensorBoardCallback
 
 from hf_nlu.trainer.nlu_modelling import DataCollatorForNLU, nlu_evaluate
-from hf_nlu.trainer.callbacks import ScoreCallback, LossCallback, TimeCallback
+from hf_nlu.trainer.callbacks import ScoreCallback, LossCallback, TimeCallback, ForgetScoreCallback
 from hf_nlu.trainer.prune_utils import PruneConfig, PruneScoreManager
 from hf_nlu.trainer.dataset_utils import format_dataset
 from hf_nlu.trainer.utils import save_evaluation
@@ -100,6 +100,13 @@ class TrainerManager:
             score_callback = ScoreCallback(
                 method=prune_mode,
                 dataset=sort_trainset,
+                collate_fn=collate_fn
+            )
+            self.trainer.add_callback(score_callback)
+        elif prune_mode == "forget":
+            score_callback = ForgetScoreCallback(
+                output_dir=self.args.get("output_dir"),
+                train_dataset=deepcopy(self.train_dataset),
                 collate_fn=collate_fn
             )
             self.trainer.add_callback(score_callback)

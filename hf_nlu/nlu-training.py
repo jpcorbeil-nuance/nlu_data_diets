@@ -121,7 +121,7 @@ def main(raw_args=None):
     assert prune_offset >= 0.0 and prune_offset <= 1.0, "'prune_offset' must be in range: [0.0, 1.0]."
     assert 1.0 - prune_offset >= prune_size, "'prune_size' must be lower or equal to 1.0 - 'prune_offset'"
     prune_mode = args_in.prune_mode
-    assert prune_mode in ["grand", "el2n", "loss", "random"], "'prune_mode' must be: grand, el2n, loss or random."
+    assert prune_mode in ["grand", "el2n", "loss", "forget", "random"], "'prune_mode' must be: grand, el2n, loss or random."
 
     ema_alpha=args_in.prune_ema_alpha
     ema_var_coef=args_in.prune_ema_var_coef
