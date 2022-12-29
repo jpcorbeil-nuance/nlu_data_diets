@@ -202,6 +202,34 @@ class RobertaForNLU(RobertaPreTrainedModel):
         )
 
 
+def nlu_eval_step(model, batch_input, fullseq_only: bool = False):
+    with torch.no_grad():
+        outputs = model(**batch_input)
+
+    intent_pred = torch.argmax(outputs.intent_logits, dim=1)
+    intent_match = (batch_input["intent_label"] == intent_pred)
+
+    slot_pred = torch.argmax(outputs.slot_logits, dim=2)
+    slot_label = batch_input["slot_label"]
+    slot_masks = torch.ne(slot_label, MASK_VALUE).int() * batch_input["attention_mask"]
+
+    if not fullseq_only:
+        active = slot_masks.view(-1) == 1
+        slot_label_active = slot_label.reshape((-1,))[active].detach().cpu().tolist()
+        slot_pred_active = slot_pred.reshape((-1,))[active].detach().cpu().tolist()
+
+    slot_match = (slot_label == slot_pred).int()
+    slot_all = torch.all(slot_masks*slot_match == slot_masks, dim=1)
+    fullseq_match = torch.logical_and(intent_match, slot_all).detach().cpu().tolist()
+
+    if fullseq_only:
+        return fullseq_match
+
+    intent_match = intent_match.detach().cpu().tolist()
+
+    return intent_match, fullseq_match, (slot_label_active, slot_pred_active)
+
+
 def nlu_evaluate(model, testset, device):
     model.to(device)
 
