@@ -65,6 +65,13 @@ class TrainerManager:
             **self.args
         )
 
+    def _sort_trainset_by_length(self):
+        trainset = deepcopy(self.train_dataset)
+        trainset.reset_format()
+        trainset = trainset.map(lambda x: {"length": len(x["input_ids"])})
+        trainset = trainset.sort("length")
+        return format_dataset(trainset)
+
     def _init_trainer(self):
         """Initialize trainer with callbacks."""
         train_args = self._generate_training_args()
@@ -88,9 +95,11 @@ class TrainerManager:
 
         prune_mode = self.prune_manager.config.mode
         if prune_mode in ["grand", "el2n", "loss"]:
+            # Reduce padding and runtime in forward pass by sorting.
+            sort_trainset = self._sort_trainset_by_length()
             score_callback = ScoreCallback(
                 method=prune_mode,
-                dataset=deepcopy(self.train_dataset),
+                dataset=sort_trainset,
                 collate_fn=collate_fn
             )
             self.trainer.add_callback(score_callback)

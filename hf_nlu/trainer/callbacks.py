@@ -2,24 +2,25 @@ from copy import deepcopy
 from functools import partial
 import time
 
+import pandas as pd
 import torch
 from torch import nn
 from tqdm import tqdm
 from transformers import TrainerCallback
 
-from hf_nlu.trainer.nlu_modelling import MASK_VALUE
+from hf_nlu.trainer.nlu_modelling import MASK_VALUE #, nlu_eval_step
 
 
 def compute_grad(output, parameters, loss_attr: str = "loss"):
-    grads = torch.autograd.grad(getattr(output, loss_attr), parameters) # allow_unused=True
-    grads = torch.concat([torch.reshape(g.detach().cpu(), (-1,)) for g in grads]) # if g is not None
+    grads = torch.autograd.grad(getattr(output, loss_attr), parameters)
+    grads = torch.concat([torch.reshape(g.detach().cpu(), (-1,)) for g in grads])
     return torch.norm(grads)
 
 
 def compute_sample_grads(inputs, model, device):
     """ manually process each sample with per sample gradient """
     batch_size = inputs["input_ids"].shape[0]
-    loss_attrs = ("loss",) # "intent_loss", "slot_loss"
+    loss_attrs = ("loss",)
     sample_grads = []
     for i in range(batch_size):
         sample_grad = []
@@ -173,3 +174,38 @@ class TimeCallback(TrainerCallback):
         with open(f"{args.output_dir}/time.txt", "r") as fp:
             times = [tuple(f.strip().split("\t")) for f in fp.readlines()]
         self.total_time = sum([float(t) for _, t, _ in times])
+
+class ForgetScoreCallback(TrainerCallback):
+    """
+    Compute forget score at the end based
+    on label match at each step.
+    """
+    def __init__(self, output_dir: str, train_dataset, collate_fn):
+        self.forget_pattern = [1, 0]
+        self.train_dataset = train_dataset
+        self.collate_fn = collate_fn
+        self.file_path = f"{output_dir}/forget_event.tsv"
+        with open(self.file_path, "w") as fp:
+            fp.write("Id\tStep\tEpoch\tEvent\n")
+
+    def on_step_end(self, args, state, control, model=None, **kwargs):
+        model.to(args.device)
+        current_step = state.global_step
+        batch = self.train_dataset[current_step:(current_step + args.per_device_train_batch_size)]
+        batch = self.collate_fn(batch)
+        batch = {k: v.to(args.device) for k, v in batch.items()}
+        fullseq = nlu_eval_step(model, batch, fullseq_only=True)
+        with open(self.file_path, "a") as fp:
+            for i, j in zip(batch["id"].detach().cpu().tolist(), fullseq):
+                fp.write("%d\t%d\t%d\t%d\n" % (i, current_step, state.epoch, j))
+
+    def _compute_forget_scores(self, df):
+        pattern = self.forget_pattern
+        n = len(pattern)
+        return df.rolling(window=n, min_periods=n).apply(lambda x: (x==pattern).all()).sum()
+
+    def on_train_end(self, args, state, control, **kwargs):
+        df = pd.read_csv(self.file_path, sep="\t")
+        df = df.drop(["Step"], axis=1)
+        event_df = pd.pivot_table(df, index="Epoch", columns="Id", values="Event")
+        self._compute_forget_scores(event_df)
