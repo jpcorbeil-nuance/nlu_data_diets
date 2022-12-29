@@ -5,7 +5,7 @@ import os
 import argparse
 
 import torch
-from transformers import AutoTokenizer, RobertaModel, RobertaConfig
+from transformers import AutoTokenizer
 from datasets import load_dataset
 from datasets.utils.logging import disable_progress_bar
 disable_progress_bar()
@@ -37,7 +37,7 @@ def parse_args(raw_args=None):
     parser.add_argument("--prune_avg_window_size", type=int, default=1, help="Number of reported scores before 'prune_epoch' to average on (only 'prune_avg_mode' == 'avg').")
     parser.add_argument("--prune_ema_alpha", type=float, default=0.8, help="Exponential Moving Average coefficient on prune scores.")
     parser.add_argument("--prune_ema_var_coef", type=float, default=1.0, help="Coefficient on variance for prune scores.")
-    parser.add_argument("--prune_ema_use_std", action='store_false', help="Use std instead of variance (default, std).")
+    parser.add_argument("--prune_ema_use_var", action='store_false', help="Use variance instead of std (default, std).")
     parser.add_argument("--bs", type=int, default=32, help="Batch size to use in training.")
     parser.add_argument("--lr", type=float, default=2e-5, help="Amount of samples to provide in one batch.")
     return parser.parse_args(raw_args)
@@ -97,10 +97,6 @@ def generate_dataset(dataset_path: str, tokenizer, random_seed: int = 1234):
 def main(raw_args=None):
     args_in = parse_args(raw_args=raw_args)
 
-    # Lock GPU if there is.
-    temp_model = RobertaModel(config=RobertaConfig())
-    temp_model.to("cuda" if torch.cuda.is_available() else "cpu")
-
     # Assign args to variables.
     model_name = args_in.model_name
     dataset_path = args_in.dataset_path
@@ -129,7 +125,7 @@ def main(raw_args=None):
 
     ema_alpha=args_in.prune_ema_alpha
     ema_var_coef=args_in.prune_ema_var_coef
-    ema_use_std=args_in.prune_ema_use_std
+    ema_use_var=args_in.prune_ema_use_var
 
     prune_config = PruneConfig(
         mode=prune_mode,
@@ -141,7 +137,7 @@ def main(raw_args=None):
         avg_window_size=prune_window_size,
         ema_alpha=ema_alpha,
         ema_var_coef=ema_var_coef,
-        ema_use_std=ema_use_std
+        ema_use_std=ema_use_var
     )
 
     print("LOAD TOKENIZER AND DATASET")
@@ -154,7 +150,7 @@ def main(raw_args=None):
         overwrite_output_dir=True,
         num_train_epochs=prune_epoch,
         per_device_train_batch_size=bs,
-        per_device_eval_batch_size=2 * bs,
+        per_device_eval_batch_size=16 * bs,
         learning_rate=learning_rate,
         seed=random_seed,
         fp16=torch.cuda.is_available(),
@@ -186,10 +182,6 @@ def main(raw_args=None):
         test_dataset = test,
         prune_config=prune_config
     )
-
-    # Unlock GPU if it is
-    temp_model.to("cpu")
-    del temp_model
 
     train_manager.run()
 
