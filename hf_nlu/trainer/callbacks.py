@@ -8,7 +8,7 @@ from torch import nn
 from tqdm import tqdm
 from transformers import TrainerCallback
 
-from hf_nlu.trainer.nlu_modelling import MASK_VALUE #, nlu_eval_step
+from hf_nlu.trainer.nlu_modelling import MASK_VALUE, nlu_eval_step
 
 
 def compute_grad(output, parameters, loss_attr: str = "loss"):
@@ -175,37 +175,47 @@ class TimeCallback(TrainerCallback):
             times = [tuple(f.strip().split("\t")) for f in fp.readlines()]
         self.total_time = sum([float(t) for _, t, _ in times])
 
+
 class ForgetScoreCallback(TrainerCallback):
     """
     Compute forget score at the end based
-    on label match at each step.
+    on full label match at each step.
     """
     def __init__(self, output_dir: str, train_dataset, collate_fn):
-        self.forget_pattern = [1, 0]
+        self.forget_pattern = [1, 0] # Forget event is going from learned to unlearned.
         self.train_dataset = train_dataset
         self.collate_fn = collate_fn
+        self.output_dir = output_dir
+
+        # Create ouput file.
         self.file_path = f"{output_dir}/forget_event.tsv"
         with open(self.file_path, "w") as fp:
             fp.write("Id\tStep\tEpoch\tEvent\n")
 
     def on_step_end(self, args, state, control, model=None, **kwargs):
         model.to(args.device)
+
         current_step = state.global_step
         batch = self.train_dataset[current_step:(current_step + args.per_device_train_batch_size)]
         batch = self.collate_fn(batch)
         batch = {k: v.to(args.device) for k, v in batch.items()}
-        fullseq = nlu_eval_step(model, batch, fullseq_only=True)
+
+        full_match = nlu_eval_step(model, batch, fullseq_only=True)
+
         with open(self.file_path, "a") as fp:
-            for i, j in zip(batch["id"].detach().cpu().tolist(), fullseq):
+            for i, j in zip(batch["id"].detach().cpu().tolist(), full_match):
                 fp.write("%d\t%d\t%d\t%d\n" % (i, current_step, state.epoch, j))
 
     def _compute_forget_scores(self, df):
         pattern = self.forget_pattern
         n = len(pattern)
-        return df.rolling(window=n, min_periods=n).apply(lambda x: (x==pattern).all()).sum()
+        scores = df.rolling(window=n, min_periods=n).apply(lambda x: (x==pattern).all()).fillna(0).sum()
+        return scores
 
     def on_train_end(self, args, state, control, **kwargs):
         df = pd.read_csv(self.file_path, sep="\t")
         df = df.drop(["Step"], axis=1)
         event_df = pd.pivot_table(df, index="Epoch", columns="Id", values="Event")
-        self._compute_forget_scores(event_df)
+        forget_scores = self._compute_forget_scores(event_df)
+        forget_scores = forget_scores.rename({0: "Score"}, axis=1)
+        forget_scores.to_csv(f"{self.output_dir}/forget_scores.tsv", sep="\t")
