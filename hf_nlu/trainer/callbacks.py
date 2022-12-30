@@ -184,6 +184,7 @@ class ForgetScoreCallback(TrainerCallback):
     def __init__(self, output_dir: str, train_dataset, collate_fn):
         self.forget_pattern = [1, 0] # Forget event is going from learned to unlearned.
         self.train_dataset = train_dataset
+        self.train_len = len(train_dataset)
         self.collate_fn = collate_fn
         self.output_dir = output_dir
 
@@ -193,13 +194,14 @@ class ForgetScoreCallback(TrainerCallback):
             fp.write("Id\tStep\tEpoch\tEvent\n")
 
     def on_step_end(self, args, state, control, model=None, **kwargs):
+        bs = args.per_device_train_batch_size
+        steps = int(self.train_len / bs) + 1
+        current_step = state.global_step % steps
+        batch = self.train_dataset.select(range(bs*current_step, min(bs*(current_step + 1), self.train_len - 1)))
+        batch = self.collate_fn(list(batch))
+
         model.to(args.device)
-
-        current_step = state.global_step
-        batch = self.train_dataset[current_step:(current_step + args.per_device_train_batch_size)]
-        batch = self.collate_fn(batch)
         batch = {k: v.to(args.device) for k, v in batch.items()}
-
         full_match = nlu_eval_step(model, batch, fullseq_only=True)
 
         with open(self.file_path, "a") as fp:
@@ -217,5 +219,5 @@ class ForgetScoreCallback(TrainerCallback):
         df = df.drop(["Step"], axis=1)
         event_df = pd.pivot_table(df, index="Epoch", columns="Id", values="Event")
         forget_scores = self._compute_forget_scores(event_df)
-        forget_scores = forget_scores.rename({0: "Score"}, axis=1)
+        forget_scores = forget_scores.reset_index().rename({0: "Score"}, axis=1)
         forget_scores.to_csv(f"{self.output_dir}/forget_scores.tsv", sep="\t")
