@@ -243,20 +243,14 @@ def nlu_evaluate(model, testset, device):
             batch_input = {k: inputs[k].to(device) for k in inputs}
             outputs = model(**batch_input)
 
-            intent_pred = torch.argmax(outputs.intent_logits, dim=1)
-            intent_match = batch_input["intent_label"] == intent_pred
+            intent_match, fullseq_match, (slot_label, slot_pred) = nlu_eval_step(model, batch_input)
+
             intent_tp_tn += torch.sum(intent_match).detach().cpu().numpy()
 
-            slot_pred = torch.argmax(outputs.slot_logits, dim=2)
-            slot_label = batch_input["slot_label"]
-            slot_masks = torch.ne(slot_label, MASK_VALUE).int() * batch_input["attention_mask"]
-            active = slot_masks.view(-1) == 1
-            slot_y.extend(slot_label.reshape((-1,))[active].detach().cpu().tolist())
-            slot_preds.extend(slot_pred.reshape((-1,))[active].detach().cpu().tolist())
+            slot_y.extend(slot_label)
+            slot_preds.extend(slot_pred)
 
-            slot_match = (slot_label == slot_pred).int()
-            slot_all = torch.all(slot_masks*slot_match == slot_masks, dim=1)
-            fullseq_tp_tn += torch.sum(torch.logical_and(intent_match, slot_all)).detach().cpu().numpy()
+            fullseq_tp_tn += torch.sum(fullseq_match).detach().cpu().numpy()
 
             total += len(intent_pred)
 
