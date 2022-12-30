@@ -245,14 +245,14 @@ def nlu_evaluate(model, testset, device):
 
             intent_match, fullseq_match, (slot_label, slot_pred) = nlu_eval_step(model, batch_input)
 
-            intent_tp_tn += torch.sum(intent_match).detach().cpu().numpy()
+            intent_tp_tn += sum(intent_match)
 
             slot_y.extend(slot_label)
             slot_preds.extend(slot_pred)
 
-            fullseq_tp_tn += torch.sum(fullseq_match).detach().cpu().numpy()
+            fullseq_tp_tn += sum(fullseq_match)
 
-            total += len(intent_pred)
+            total += len(intent_match)
 
     slot_f1 = f1_score(slot_y, slot_preds, average="micro")
     output = {"intent_acc": intent_tp_tn/total, "slot_f1": slot_f1, "fullseq_acc": fullseq_tp_tn/total}
