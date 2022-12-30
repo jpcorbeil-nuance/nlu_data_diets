@@ -4,6 +4,7 @@
 import os
 import argparse
 
+import pandas as pd
 import torch
 from transformers import AutoTokenizer
 from datasets import load_dataset
@@ -40,6 +41,7 @@ def parse_args(raw_args=None):
     parser.add_argument("--prune_ema_use_var", action='store_false', help="Use variance instead of std (default, std).")
     parser.add_argument("--bs", type=int, default=32, help="Batch size to use in training.")
     parser.add_argument("--lr", type=float, default=2e-5, help="Amount of samples to provide in one batch.")
+    parser.add_argument("--static_score_file_path", type=str, default="", help="Path in which to find the scores to filter the trainset.")
     return parser.parse_args(raw_args)
 
 
@@ -94,6 +96,21 @@ def generate_dataset(dataset_path: str, tokenizer, random_seed: int = 1234):
     return dataset["train"], dataset["test"], rev_dict(intent2id), rev_dict(slot2id)
 
 
+def filter_trainset(train_dataset, score_file: str, prune_size: float):
+    print("STATIC PRUNING...")
+    train_dataset.reset_format()
+
+    scores = pd.read_csv(score_file, sep="\t")
+    norm_top_percentile = float(scores["Score"].quantile(1.0))
+    norm_down_percentile = float(scores["Score"].quantile(1.0 - prune_size))
+    bound_tup = (norm_down_percentile, norm_top_percentile)
+
+    score_dict = {i: n for i, n in scores[["Id", "Score"]].values}
+    train_dataset = train_dataset.map(lambda x: {"Score": score_dict[x["id"]]})
+    train_filtered = train_dataset.filter(lambda x: x["Score"] >= bound_tup[0] and x["Score"] <= bound_tup[1])
+    return format_dataset(train_filtered)
+
+
 def main(raw_args=None):
     args_in = parse_args(raw_args=raw_args)
 
@@ -106,6 +123,7 @@ def main(raw_args=None):
     frequency = args_in.frequency
     learning_rate = args_in.lr
     bs = args_in.bs
+    static_score_file_path = args_in.static_score_file_path
 
     epochs = args_in.epochs
     prune_epoch = args_in.prune_epoch
@@ -143,6 +161,9 @@ def main(raw_args=None):
     print("LOAD TOKENIZER AND DATASET")
     tokenizer = AutoTokenizer.from_pretrained(model_name, add_prefix_space=True)
     train, test, id2intent, id2slots = generate_dataset(dataset_path, tokenizer, random_seed)
+
+    if static_score_file_path != "":
+        train = filter_trainset(train, static_score_file_path, prune_size)
 
     # Set trainer args.
     args = dict(
