@@ -197,7 +197,7 @@ class ForgetScoreCallback(TrainerCallback):
         bs = args.per_device_train_batch_size
         steps = int(self.train_len / bs) + 1
         current_step = state.global_step % steps
-        batch = self.train_dataset.select(range(bs*current_step, min(bs*(current_step + 1), self.train_len - 1)))
+        batch = self.train_dataset.select(range(bs*current_step, min(bs*(current_step + 1), self.train_len)))
         batch = self.collate_fn(list(batch))
 
         model.to(args.device)
