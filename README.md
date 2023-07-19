@@ -1,10 +1,29 @@
 # NLU on Data Diets: Dynamic Data Subset Selection for NLP Classification Tasks
 
-## Execute on GLUE datasets
+## Datasets
+
+### GLUE
+
+We leverage the `datasets` library from HF to load and parse the data as with the original HF GLUE training script.
+
+### Joint NLU tasks
+
+All datasets were gathered using the following links and put inside their respective folders `hf_nlu_data_diet/datasets/$DATASET_NAME/raw/`.
+
+-[ATIS]([https://catalog.ldc.upenn.edu/LDC94S19](https://github.com/howl-anderson/ATIS_dataset/tree/master)): from ATIS_dataset repository.
+-[SNIPS](https://github.com/monologg/JointBERT): source from the JointBERT github's SNIPS dataset.
+-[MTOP](https://fb.me/mtop_dataset): just the english segment.
+-[SLURP](https://github.com/alexa/massive): we took the English part of the MASSIVE dataset (based on SLURP) from Amazon Alexa for simplicity.
+
+Then, we used their parse script provided in each dataset folder to generate the train/test parquet files using standard NLU formatting (columns are "id" for index in dataset, "text" for plain utterance, "intent" for intent label and "slots" for whitespace-delimited label sequence). We load the parquets with the `datasets` library in the training script.
+
+## Execute
+
+### GLUE
 
 The script for the trainings on GLUE was derived from the HF's implementation. Please check it out to be familiar with their parameters. We added all the pruning parameters by leveraging our PruneConfig class.
 
-    python -m hf_nlu.glue_training \
+    python -m hf_nlu_data_diet.glue_training \
       --model_name_or_path roberta-base \
       --seed $random_seed \
       --dataset_name $DATASET  \
@@ -22,11 +41,11 @@ The script for the trainings on GLUE was derived from the HF's implementation. P
       --prune_frequency $FREQUENCY \
       --output_dir $RUNFOLDER/$DATASET/$random_seed
 
-## Execute on NLU datasets
+### Joint NLU
 
 Check CLI help for more details on each parameter.
 
-    python -m hf_nlu.nlu_training \
+    python -m hf_nlu_data_diet.nlu_training \
       --output_path $RUNFOLDER/$DATASET/$random_seed \
       --dataset_path $RUNPATH/datasets/$DATASET/nlu_data \
       --random_seed $random_seed \
