@@ -2,6 +2,8 @@
 
 This repository contains the code used to produce the NLU on Data Diets paper leveraging the HuggingFace (HF) `transformers` library. To achieve the dynamic pruning, we patch a `Trainer` object to cycle *N* executions (computed using *epochs*) of *prune_frequency* epochs on a pruned subset of the trainset at a ratio of *prune_size*, with an initial training on the full dataset of *prune_epoch* epochs. We let for future work a clean PR to integrate our method in the `Trainer` class of HF `transformers`.
 
+![Dynamic Data Pruning Diagram](img/nlu_data_diet.png)
+
 ## Datasets
 
 ### GLUE
