@@ -10,7 +10,7 @@ We leverage the `datasets` library from HF to load and parse the data as with th
 
 All datasets were gathered using the following links and put inside their respective folders `hf_nlu_data_diet/datasets/$DATASET_NAME/raw/`.
 
-  - [ATIS]([https://catalog.ldc.upenn.edu/LDC94S19](https://github.com/howl-anderson/ATIS_dataset/tree/master)): from ATIS_dataset repository.
+  - [ATIS](https://github.com/howl-anderson/ATIS_dataset/tree/master): from ATIS_dataset repository.
   - [SNIPS](https://github.com/monologg/JointBERT): source from the JointBERT github's SNIPS dataset.
   - [MTOP](https://fb.me/mtop_dataset): just the english segment.
   - [SLURP](https://github.com/alexa/massive): we took the English part of the MASSIVE dataset (based on SLURP) from Amazon Alexa for simplicity.
