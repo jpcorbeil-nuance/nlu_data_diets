@@ -1,3 +1,7 @@
 __pycache__/
 */__pycache__/
 mlruns
+*/mlruns
+hf_nlu_data_diet/execute_nlu.py
+hf_nlu_data_diet/execute_glue.py
+hf_nlu_data_diet/scripts/*
