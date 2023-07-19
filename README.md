@@ -10,10 +10,10 @@ We leverage the `datasets` library from HF to load and parse the data as with th
 
 All datasets were gathered using the following links and put inside their respective folders `hf_nlu_data_diet/datasets/$DATASET_NAME/raw/`.
 
--[ATIS]([https://catalog.ldc.upenn.edu/LDC94S19](https://github.com/howl-anderson/ATIS_dataset/tree/master)): from ATIS_dataset repository.
--[SNIPS](https://github.com/monologg/JointBERT): source from the JointBERT github's SNIPS dataset.
--[MTOP](https://fb.me/mtop_dataset): just the english segment.
--[SLURP](https://github.com/alexa/massive): we took the English part of the MASSIVE dataset (based on SLURP) from Amazon Alexa for simplicity.
+  -[ATIS]([https://catalog.ldc.upenn.edu/LDC94S19](https://github.com/howl-anderson/ATIS_dataset/tree/master)): from ATIS_dataset repository.
+  -[SNIPS](https://github.com/monologg/JointBERT): source from the JointBERT github's SNIPS dataset.
+  -[MTOP](https://fb.me/mtop_dataset): just the english segment.
+  -[SLURP](https://github.com/alexa/massive): we took the English part of the MASSIVE dataset (based on SLURP) from Amazon Alexa for simplicity.
 
 Then, we used their parse script provided in each dataset folder to generate the train/test parquet files using standard NLU formatting (columns are "id" for index in dataset, "text" for plain utterance, "intent" for intent label and "slots" for whitespace-delimited label sequence). We load the parquets with the `datasets` library in the training script.
 
