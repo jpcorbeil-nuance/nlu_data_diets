@@ -3,7 +3,7 @@
 ## Citation
 
     @inproceedings{attendu-corbeil-2023-nlu,
-        title = "{NLU} on Data Diets: Dynamic Data Subset Selection for {NLP} Classification Tasks",
+        title = "NLU on Data Diets: Dynamic Data Subset Selection for NLP Classification Tasks",
         author = "Attendu, Jean-michel and Corbeil, Jean-philippe",
         booktitle = "Proceedings of The Fourth Workshop on Simple and Efficient Natural Language Processing (SustaiNLP)",
         month = jul,
